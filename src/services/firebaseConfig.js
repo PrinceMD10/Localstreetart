@@ -1,29 +1,22 @@
-// App.js
-import { NavigationContainer } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
-// Import Screens
-import HomeScreen from "./src/screens/HomeScreen";
-import LoginScreen from "./src/screens/LoginScreen";
-import PhotoScreen from "./src/screens/PhotoScreen";
-import SplashScreen from "./src/screens/SplashScreen";
-import SubscribeScreen from "./src/screens/SubscribeScreen";
+// Ta configuration Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyAry74FkbA2VxWNcQQPcywq6bauB5n4Ijs",
+  authDomain: "localstreetart-b9373.firebaseapp.com",
+  projectId: "localstreetart-b9373",
+  storageBucket: "localstreetart-b9373.firebasestorage.app",
+  messagingSenderId: "497968710605",
+  appId: "1:497968710605:web:7cad60bb2b6d5cf7fcfa84",
+};
 
-const Stack = createNativeStackNavigator();
+// Initialisation de Firebase
+const app = initializeApp(firebaseConfig);
 
-export default function App() {
-  return (
-    <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName="Splash"
-        screenOptions={{ headerShown: false }}
-      >
-        <Stack.Screen name="Splash" component={SplashScreen} />
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Subscribe" component={SubscribeScreen} />
-        <Stack.Screen name="Home" component={HomeScreen} />
-        <Stack.Screen name="Photo" component={PhotoScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
-  );
-}
+// Exportation des services pour les utiliser dans l'application
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
