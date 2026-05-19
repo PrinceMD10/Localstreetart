@@ -20,10 +20,8 @@ export default function LoginScreen({ navigation }) {
       Alert.alert("Error", "Please fill in all fields.");
       return;
     }
-
-    // Firebase Auth
     signInWithEmailAndPassword(auth, email, password)
-      .then((userCredential) => {
+      .then(() => {
         navigation.replace("Home");
       })
       .catch((error) => {
@@ -34,13 +32,13 @@ export default function LoginScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Welcome Back!</Text>
-
       <TextInput
         style={styles.input}
         placeholder="Email"
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
+        keyboardType="email-address"
       />
       <TextInput
         style={styles.input}
@@ -49,11 +47,9 @@ export default function LoginScreen({ navigation }) {
         onChangeText={setPassword}
         secureTextEntry
       />
-
       <TouchableOpacity style={styles.button} onPress={handleLogin}>
         <Text style={styles.buttonText}>Log In</Text>
       </TouchableOpacity>
-
       <TouchableOpacity onPress={() => navigation.navigate("Subscribe")}>
         <Text style={styles.linkText}>
           Don't have an account? Subscribe here.
@@ -83,7 +79,6 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 8,
     marginBottom: 15,
-    fontFamily: "Quicksand",
   },
   button: {
     backgroundColor: "#f72585",

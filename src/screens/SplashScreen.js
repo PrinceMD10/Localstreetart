@@ -1,19 +1,41 @@
 // src/screens/SplashScreen.js
 import { useEffect } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Animated, StyleSheet, Text, View } from "react-native";
 
 export default function SplashScreen({ navigation }) {
+  const opacity = new Animated.Value(0);
+  const scale = new Animated.Value(0.8);
+
   useEffect(() => {
-    // Simulate loading time, then navigate to Login
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scale, {
+        toValue: 1,
+        friction: 4,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
     const timer = setTimeout(() => {
       navigation.replace("Login");
-    }, 2000);
+    }, 2500);
+
     return () => clearTimeout(timer);
-  }, [navigation]);
+  }, []);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.logoText}>LocalStreetArt</Text>
+      <Animated.View
+        style={[styles.content, { opacity, transform: [{ scale }] }]}
+      >
+        <Text style={styles.emoji}>🎨</Text>
+        <Text style={styles.title}>LocalStreetArt</Text>
+        <Text style={styles.subtitle}>Discover urban art around you</Text>
+      </Animated.View>
     </View>
   );
 }
@@ -21,13 +43,22 @@ export default function SplashScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#3a0ca3", // Deep Blue
-    alignItems: "center",
+    backgroundColor: "#3a0ca3",
     justifyContent: "center",
+    alignItems: "center",
   },
-  logoText: {
-    fontSize: 40,
-    color: "#f72585", // Primary Pink
-    fontWeight: "bold",
+  content: { alignItems: "center" },
+  emoji: { fontSize: 64, marginBottom: 16 },
+  title: {
+    fontSize: 36,
+    fontWeight: "900",
+    color: "#ffffff",
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: "rgba(255,255,255,0.7)",
+    letterSpacing: 0.5,
   },
 });

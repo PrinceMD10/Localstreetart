@@ -1,6 +1,6 @@
 {
   "name": "localstreetart",
-  "main": "expo-router/entry",
+  "main": "node_modules/expo/AppEntry.js",
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
@@ -25,6 +25,7 @@
     "expo-font": "~55.0.7",
     "expo-glass-effect": "~55.0.11",
     "expo-image": "~55.0.10",
+    "expo-image-picker": "~55.0.20",
     "expo-linking": "~55.0.15",
     "expo-location": "~55.1.10",
     "expo-router": "~55.0.14",
