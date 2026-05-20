@@ -1,7 +1,7 @@
 // src/screens/PhotoScreen.js
 import { CommonActions } from "@react-navigation/native";
 import { addDoc, collection } from "firebase/firestore";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { auth, db } from "../services/firebaseConfig";
 
-// ✅ Images CORS-safe — picsum n'est pas bloqué par Firefox sur localhost
+// CORS-safe images for web simulation (picsum allows cross-origin)
 const STREET_ART_IMAGES = [
   "https://picsum.photos/seed/streetart1/600/400",
   "https://picsum.photos/seed/streetart2/600/400",
@@ -24,23 +24,97 @@ const STREET_ART_IMAGES = [
   "https://picsum.photos/seed/mural1/600/400",
 ];
 
-// expo-image-picker uniquement sur mobile
+// Load expo modules only on mobile to avoid web crashes
 let ImagePicker = null;
+let Location = null;
+
 if (Platform.OS !== "web") {
   try {
     ImagePicker = require("expo-image-picker");
-  } catch (e) {
-    console.log("[Camera] expo-image-picker non disponible");
-  }
+  } catch (e) {}
+  try {
+    Location = require("expo-location");
+  } catch (e) {}
 }
 
 export default function PhotoScreen({ navigation }) {
   const [photo, setPhoto] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [location, setLocation] = useState(null);
+  const [locLoading, setLocLoading] = useState(false);
 
-  // ── Prendre une photo ─────────────────────────────────────────
+  /**
+   * Requests and retrieves the current GPS position.
+   * On web, uses the browser Geolocation API.
+   * On mobile, uses expo-location.
+   */
+  useEffect(() => {
+    fetchLocation();
+  }, []);
+
+  const fetchLocation = async () => {
+    setLocLoading(true);
+    try {
+      if (Platform.OS === "web") {
+        // Browser Geolocation API
+        if (!navigator.geolocation) {
+          console.warn("[Location] Geolocation not supported on this browser.");
+          setLocLoading(false);
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            setLocation({
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+            });
+            console.log(
+              "[Location] ✅ Web GPS:",
+              pos.coords.latitude,
+              pos.coords.longitude,
+            );
+            setLocLoading(false);
+          },
+          (err) => {
+            console.warn("[Location] ⚠️ Web GPS denied:", err.message);
+            setLocLoading(false);
+          },
+          { enableHighAccuracy: true, timeout: 10000 },
+        );
+      } else if (Location) {
+        // expo-location on mobile
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          console.warn("[Location] ⚠️ Permission denied.");
+          setLocLoading(false);
+          return;
+        }
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+        setLocation({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        });
+        console.log(
+          "[Location] ✅ Mobile GPS:",
+          pos.coords.latitude,
+          pos.coords.longitude,
+        );
+        setLocLoading(false);
+      }
+    } catch (err) {
+      console.warn("[Location] ❌ Error:", err.message);
+      setLocLoading(false);
+    }
+  };
+
+  /**
+   * Takes a photo using the device camera (mobile) or picks a random image (web simulation).
+   */
   const takePicture = async () => {
     if (Platform.OS === "web" || !ImagePicker) {
+      // Web: random CORS-safe image
       const img =
         STREET_ART_IMAGES[Math.floor(Math.random() * STREET_ART_IMAGES.length)];
       setPhoto(img);
@@ -49,10 +123,7 @@ export default function PhotoScreen({ navigation }) {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Permission refusée",
-          "L'accès à la caméra est nécessaire.",
-        );
+        Alert.alert("Permission denied", "Camera access is required.");
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
@@ -65,20 +136,20 @@ export default function PhotoScreen({ navigation }) {
         setPhoto(result.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert("Erreur caméra", error.message);
+      Alert.alert("Camera error", error.message);
     }
   };
 
+  /**
+   * Opens the gallery to pick an image (mobile only).
+   */
   const pickFromGallery = async () => {
     if (!ImagePicker) return;
     try {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Permission refusée",
-          "L'accès à la galerie est nécessaire.",
-        );
+        Alert.alert("Permission denied", "Gallery access is required.");
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -91,47 +162,48 @@ export default function PhotoScreen({ navigation }) {
         setPhoto(result.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert("Erreur galerie", error.message);
+      Alert.alert("Gallery error", error.message);
     }
   };
 
-  // ── Publier ───────────────────────────────────────────────────
+  /**
+   * Saves the artwork (image URL + geolocation + author) to Firestore,
+   * then navigates back to Home immediately.
+   */
   const handlePublish = async () => {
     if (!photo) return;
     const user = auth.currentUser;
     if (!user) {
-      Alert.alert("Erreur", "Vous devez être connecté.");
+      Alert.alert("Error", "You must be logged in.");
       return;
     }
 
     setUploading(true);
 
-    // ✅ FIX DÉFINITIF :
-    // On navigue IMMÉDIATEMENT vers Home sans attendre addDoc.
-    // addDoc continue en arrière-plan — Firestore le termine et
-    // onSnapshot dans HomeScreen reçoit la mise à jour automatiquement.
+    // Navigate to Home immediately — addDoc runs in background
     navigation.dispatch(
-      CommonActions.reset({
-        index: 1,
-        routes: [{ name: "Home" }],
-      }),
+      CommonActions.reset({ index: 0, routes: [{ name: "Home" }] }),
     );
 
-    // addDoc en arrière-plan
+    // Save artwork to Firestore with geolocation
     addDoc(collection(db, "artworks"), {
       imageUrl: photo,
       author: user.displayName || user.email.split("@")[0],
       authorId: user.uid,
       likes: 0,
       likedBy: [],
+      // Geolocation — null if permission was denied
+      latitude: location?.latitude ?? null,
+      longitude: location?.longitude ?? null,
       createdAt: new Date().toISOString(),
     })
-      .then(() => {
-        console.log("[Firestore] ✅ Published!");
-      })
-      .catch((error) => {
-        console.error("[Firestore] ❌", error.code, error.message);
-      });
+      .then(() =>
+        console.log(
+          "[Firestore] ✅ Artwork published with location:",
+          location,
+        ),
+      )
+      .catch((err) => console.error("[Firestore] ❌", err.code, err.message));
   };
 
   // ── Camera View ───────────────────────────────────────────────
@@ -147,24 +219,43 @@ export default function PhotoScreen({ navigation }) {
 
         <Text style={styles.emoji}>📷</Text>
         <Text style={styles.title}>
-          {Platform.OS === "web" ? "Simuler une photo" : "Prendre une photo"}
+          {Platform.OS === "web" ? "Simulate a photo" : "Take a photo"}
         </Text>
         <Text style={styles.subtitle}>
           {Platform.OS === "web"
-            ? "Appuie sur le bouton pour simuler une prise de vue"
-            : "Utilise la caméra ou choisis depuis la galerie"}
+            ? "Press the button to simulate taking a street art photo"
+            : "Use your camera or pick from your gallery"}
         </Text>
+
+        {/* GPS status indicator */}
+        <View style={styles.gpsStatus}>
+          {locLoading ? (
+            <>
+              <ActivityIndicator size="small" color="#f72585" />
+              <Text style={styles.gpsText}> Getting location...</Text>
+            </>
+          ) : location ? (
+            <Text style={styles.gpsTextOk}>
+              📍 Location ready ({location.latitude.toFixed(3)},{" "}
+              {location.longitude.toFixed(3)})
+            </Text>
+          ) : (
+            <Text style={styles.gpsTextWarn}>
+              ⚠️ Location unavailable — artwork will have no map
+            </Text>
+          )}
+        </View>
 
         <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
           <View style={styles.innerCaptureButton} />
         </TouchableOpacity>
         <Text style={styles.captureLabel}>
-          {Platform.OS === "web" ? "Simuler" : "Caméra"}
+          {Platform.OS === "web" ? "Simulate" : "Camera"}
         </Text>
 
         {Platform.OS !== "web" && ImagePicker && (
           <TouchableOpacity style={styles.galleryBtn} onPress={pickFromGallery}>
-            <Text style={styles.galleryBtnText}>🖼️ Galerie</Text>
+            <Text style={styles.galleryBtnText}>🖼️ Gallery</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -186,6 +277,15 @@ export default function PhotoScreen({ navigation }) {
         </TouchableOpacity>
         <Text style={styles.previewTitle}>Photo Preview 🎨</Text>
         <View style={{ width: 30 }} />
+      </View>
+
+      {/* Location badge on preview */}
+      <View style={styles.locationBadge}>
+        <Text style={styles.locationBadgeText}>
+          {location
+            ? `📍 ${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`
+            : "📍 No location"}
+        </Text>
       </View>
 
       <View style={styles.actionButtons}>
@@ -214,7 +314,7 @@ export default function PhotoScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  // ── Camera View ──
+  // ── Camera view ──
   container: {
     flex: 1,
     backgroundColor: "#121212",
@@ -235,11 +335,26 @@ const styles = StyleSheet.create({
   subtitle: {
     color: "#6c757d",
     fontSize: 14,
-    marginBottom: 48,
+    marginBottom: 24,
     textAlign: "center",
     paddingHorizontal: 20,
     lineHeight: 22,
   },
+
+  // GPS indicator
+  gpsStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 32,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderRadius: 20,
+  },
+  gpsText: { color: "#aaa", fontSize: 13 },
+  gpsTextOk: { color: "#4ade80", fontSize: 13, fontWeight: "600" },
+  gpsTextWarn: { color: "#facc15", fontSize: 13 },
+
   captureButton: {
     width: 84,
     height: 84,
@@ -274,7 +389,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // ── Preview View ──
+  // ── Preview view ──
   previewWrapper: { flex: 1, backgroundColor: "#000" },
   preview: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   topBar: {
@@ -288,6 +403,16 @@ const styles = StyleSheet.create({
   },
   backBtn: { color: "white", fontSize: 22, fontWeight: "bold" },
   previewTitle: { color: "white", fontSize: 18, fontWeight: "bold" },
+  locationBadge: {
+    position: "absolute",
+    top: 110,
+    alignSelf: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  locationBadgeText: { color: "#fff", fontSize: 13 },
   actionButtons: {
     position: "absolute",
     bottom: 0,
